@@ -57,11 +57,12 @@ jobs:
         # "linux")]` the variant itself carries (client.rs:79), so
         # sysknife-cli does not compile on macOS. Excluding that package
         # lets the survey measure what the rest of the workspace actually
-        # does once the tests can run.
+        # does once the tests can run. --no-fail-fast so the failure count
+        # is the whole suite's, not whatever ran before the first red.
         continue-on-error: true
         run: |
           set -o pipefail
-          cargo nextest run --workspace --locked --exclude sysknife-cli 2>&1 | tee nextest-macos-excl-cli.txt
+          cargo nextest run --workspace --locked --exclude sysknife-cli --no-fail-fast 2>&1 | tee nextest-macos-excl-cli.txt
 
       - name: Survey summary
         if: always()
