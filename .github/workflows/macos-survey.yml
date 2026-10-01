@@ -44,24 +44,43 @@ jobs:
         with:
           tool: cargo-nextest
 
-      - name: Nextest survey
+      - name: Nextest survey (whole workspace)
         continue-on-error: true
         run: |
           set -o pipefail
           cargo nextest run --workspace --locked 2>&1 | tee nextest-macos.txt
 
+      - name: Nextest survey excluding sysknife-cli
+        # Stage B: the whole-workspace pass aborts in the build —
+        # apps/sysknife-cli/src/runner.rs:123 matches on the
+        # `SocketTarget::Vsock` variant without the `#[cfg(target_os =
+        # "linux")]` the variant itself carries (client.rs:79), so
+        # sysknife-cli does not compile on macOS. Excluding that package
+        # lets the survey measure what the rest of the workspace actually
+        # does once the tests can run.
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo nextest run --workspace --locked --exclude sysknife-cli 2>&1 | tee nextest-macos-excl-cli.txt
+
       - name: Survey summary
         if: always()
         run: |
-          echo '=== final summary ==='
-          grep -E 'Summary \[|Diagnostics' nextest-macos.txt || tail -n 30 nextest-macos.txt
-          echo '=== failing tests ==='
-          grep -E '×|FAIL|panicked|error:' nextest-macos.txt | head -60 || true
+          for f in nextest-macos.txt nextest-macos-excl-cli.txt; do
+            echo "=== $f: final summary ==="
+            grep -E 'Summary \[' "$f" || echo '(no nextest summary — the build did not reach the test run)'
+            echo "=== $f: compile errors ==="
+            grep -E 'error\[|^error:' "$f" | head -40 || true
+            echo "=== $f: failing / panicking tests ==="
+            grep -E '×|FAIL|panicked' "$f" | head -60 || true
+          done
 
       - name: Upload raw survey output
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: nextest-macos
-          path: nextest-macos.txt
+          path: |
+            nextest-macos.txt
+            nextest-macos-excl-cli.txt
           if-no-files-found: warn
